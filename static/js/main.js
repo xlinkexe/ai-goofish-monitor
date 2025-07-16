@@ -20,6 +20,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 <p>这里将提供一个下拉菜单选择任务，然后以卡片形式展示对应的 .jsonl 文件中的商品。</p>
                 <p>将支持筛选“仅看AI推荐”的商品，并可以查看AI分析详情。</p>
             </section>`,
+        logs: () => `
+            <section id="logs-section" class="content-section">
+                <div class="section-header">
+                    <h2>运行日志</h2>
+                    <button id="refresh-logs-btn" class="control-button">🔄 刷新</button>
+                </div>
+                <pre id="log-content-container">正在加载日志...</pre>
+            </section>`,
         settings: () => `
             <section id="settings-section" class="content-section">
                 <h2>系统设置</h2>
@@ -109,6 +117,32 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    async function fetchSystemStatus() {
+        try {
+            const response = await fetch('/api/settings/status');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return await response.json();
+        } catch (error) {
+            console.error("无法获取系统状态:", error);
+            return null;
+        }
+    }
+
+    async function fetchLogs() {
+        try {
+            const response = await fetch('/api/logs');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return await response.json();
+        } catch (error) {
+            console.error("无法获取日志:", error);
+            return { content: `加载日志失败: ${error.message}` };
+        }
+    }
+
     // --- Render Functions ---
     function renderTasksTable(tasks) {
         if (!tasks || tasks.length === 0) {
@@ -175,6 +209,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 const container = document.getElementById('tasks-table-container');
                 const tasks = await fetchTasks();
                 container.innerHTML = renderTasksTable(tasks);
+            } else if (sectionId === 'logs') {
+                const logContainer = document.getElementById('log-content-container');
+                const logs = await fetchLogs();
+                logContainer.textContent = logs.content;
+                // 自动滚动到底部
+                logContainer.scrollTop = logContainer.scrollHeight;
             }
 
         } else {
@@ -278,6 +318,12 @@ document.addEventListener('DOMContentLoaded', function() {
             const container = document.getElementById('tasks-table-container');
             const tasks = await fetchTasks();
             container.innerHTML = renderTasksTable(tasks);
+        } else if (button.matches('#refresh-logs-btn')) {
+            const logContainer = document.getElementById('log-content-container');
+            logContainer.textContent = '正在刷新...';
+            const logs = await fetchLogs();
+            logContainer.textContent = logs.content;
+            logContainer.scrollTop = logContainer.scrollHeight;
         }
     });
 
@@ -364,15 +410,77 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
 
+    // --- Header Controls & Status ---
+    function updateHeaderControls(status) {
+        const statusIndicator = document.getElementById('status-indicator');
+        const statusText = document.getElementById('status-text');
+        const startBtn = document.getElementById('start-all-tasks');
+        const stopBtn = document.getElementById('stop-all-tasks');
+
+        // Reset buttons state
+        startBtn.disabled = false;
+        startBtn.innerHTML = `🚀 全部启动`;
+        stopBtn.disabled = false;
+        stopBtn.innerHTML = `🛑 全部停止`;
+
+        if (status && status.scraper_running) {
+            statusIndicator.className = 'status-running';
+            statusText.textContent = '运行中';
+            startBtn.style.display = 'none';
+            stopBtn.style.display = 'inline-block';
+        } else {
+            statusIndicator.className = 'status-stopped';
+            statusText.textContent = '已停止';
+            startBtn.style.display = 'inline-block';
+            stopBtn.style.display = 'none';
+        }
+    }
+
+    async function refreshSystemStatus() {
+        const status = await fetchSystemStatus();
+        updateHeaderControls(status);
+    }
+
+    document.getElementById('start-all-tasks').addEventListener('click', async () => {
+        const btn = document.getElementById('start-all-tasks');
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner" style="vertical-align: middle;"></span> 启动中...`;
+
+        try {
+            const response = await fetch('/api/tasks/start-all', { method: 'POST' });
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.detail || '启动失败');
+            }
+            await response.json();
+            // Give backend a moment to update state before refreshing
+            setTimeout(refreshSystemStatus, 1000);
+        } catch (error) {
+            alert(`启动任务失败: ${error.message}`);
+            await refreshSystemStatus(); // Refresh status to reset button state
+        }
+    });
+
+    document.getElementById('stop-all-tasks').addEventListener('click', async () => {
+        const btn = document.getElementById('stop-all-tasks');
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner" style="vertical-align: middle;"></span> 停止中...`;
+
+        try {
+            const response = await fetch('/api/tasks/stop-all', { method: 'POST' });
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.detail || '停止失败');
+            }
+            await response.json();
+            setTimeout(refreshSystemStatus, 1000);
+        } catch (error) {
+            alert(`停止任务失败: ${error.message}`);
+            await refreshSystemStatus(); // Refresh status to reset button state
+        }
+    });
+
     // Initial load
     navigateTo(window.location.hash || '#tasks');
-
-    // --- Header Controls Event Listeners ---
-    document.getElementById('start-all-tasks').addEventListener('click', () => {
-        alert('“全部启动”功能待实现');
-    });
-
-    document.getElementById('stop-all-tasks').addEventListener('click', () => {
-        alert('“全部停止”功能待实现');
-    });
+    refreshSystemStatus();
 });

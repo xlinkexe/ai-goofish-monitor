@@ -4,6 +4,7 @@ import aiofiles
 import os
 import glob
 import asyncio
+import sys
 from dotenv import dotenv_values
 from fastapi import FastAPI, Request, HTTPException
 from prompt_generator import generate_criteria, update_config_with_new_task
@@ -52,6 +53,9 @@ class PromptUpdate(BaseModel):
 
 
 app = FastAPI(title="闲鱼智能监控机器人")
+
+# --- Globals for process management ---
+scraper_process = None
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -215,6 +219,72 @@ async def update_task(task_id: int, task_update: TaskUpdate):
         raise HTTPException(status_code=500, detail=f"写入配置文件时发生错误: {e}")
 
 
+@app.post("/api/tasks/start-all", response_model=dict)
+async def start_all_tasks():
+    """
+    启动所有在 config.json 中启用的任务。
+    """
+    global scraper_process
+    if scraper_process and scraper_process.returncode is None:
+        raise HTTPException(status_code=400, detail="监控任务已在运行中。")
+
+    try:
+        # 设置日志目录和文件
+        os.makedirs("logs", exist_ok=True)
+        log_file_path = os.path.join("logs", "scraper.log")
+        
+        # 以追加模式打开日志文件，如果不存在则创建。
+        # 子进程将继承这个文件句柄。
+        log_file_handle = open(log_file_path, 'a', encoding='utf-8')
+
+        # 使用与Web服务器相同的Python解释器来运行爬虫脚本
+        # 增加 -u 参数来禁用I/O缓冲，确保日志实时写入文件
+        scraper_process = await asyncio.create_subprocess_exec(
+            sys.executable, "-u", "spider_v2.py",
+            stdout=log_file_handle,
+            stderr=log_file_handle
+        )
+        print(f"启动爬虫进程，PID: {scraper_process.pid}，日志输出到 {log_file_path}")
+        return {"message": "所有启用任务已启动。"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"启动爬虫进程时出错: {e}")
+
+
+@app.post("/api/tasks/stop-all", response_model=dict)
+async def stop_all_tasks():
+    """
+    停止当前正在运行的监控任务。
+    """
+    global scraper_process
+    if not scraper_process or scraper_process.returncode is not None:
+        raise HTTPException(status_code=400, detail="没有正在运行的监控任务。")
+
+    try:
+        scraper_process.terminate()
+        await scraper_process.wait()
+        print(f"爬虫进程 {scraper_process.pid} 已终止。")
+        scraper_process = None
+        return {"message": "所有任务已停止。"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"停止爬虫进程时出错: {e}")
+
+
+@app.get("/api/logs")
+async def get_logs():
+    """
+    获取爬虫日志文件的内容。
+    """
+    log_file_path = os.path.join("logs", "scraper.log")
+    if not os.path.exists(log_file_path):
+        return JSONResponse(content={"content": "日志文件不存在或尚未创建。"}, status_code=200)
+    try:
+        async with aiofiles.open(log_file_path, 'r', encoding='utf-8') as f:
+            content = await f.read()
+        return {"content": content}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"读取日志文件时出错: {e}")
+
+
 @app.delete("/api/tasks/{task_id}", response_model=dict)
 async def delete_task(task_id: int):
     """
@@ -296,9 +366,21 @@ async def get_system_status():
     """
     检查系统关键文件和配置的状态。
     """
+    global scraper_process
     env_config = dotenv_values(".env")
+
+    # 检查进程是否仍在运行
+    is_running = False
+    if scraper_process:
+        if scraper_process.returncode is None:
+            is_running = True
+        else:
+            # 进程已结束，重置
+            print(f"检测到爬虫进程 {scraper_process.pid} 已结束，返回码: {scraper_process.returncode}。")
+            scraper_process = None
     
     status = {
+        "scraper_running": is_running,
         "login_state_file": {
             "exists": os.path.exists("xianyu_state.json"),
             "path": "xianyu_state.json"
@@ -361,6 +443,24 @@ async def update_prompt_content(filename: str, prompt_update: PromptUpdate):
         return {"message": f"Prompt 文件 '{filename}' 更新成功。"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"写入 Prompt 文件时出错: {e}")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """
+    应用退出时，确保终止所有子进程。
+    """
+    global scraper_process
+    if scraper_process and scraper_process.returncode is None:
+        print(f"Web服务器正在关闭，正在终止爬虫进程 {scraper_process.pid}...")
+        scraper_process.terminate()
+        try:
+            await asyncio.wait_for(scraper_process.wait(), timeout=5.0)
+            print("爬虫进程已成功终止。")
+        except asyncio.TimeoutError:
+            print("等待爬虫进程终止超时，将强制终止。")
+            scraper_process.kill()
+        scraper_process = None
 
 
 if __name__ == "__main__":
