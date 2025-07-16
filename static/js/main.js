@@ -16,9 +16,20 @@ document.addEventListener('DOMContentLoaded', function() {
             </section>`,
         results: () => `
             <section id="results-section" class="content-section">
-                <h2>结果查看</h2>
-                <p>这里将提供一个下拉菜单选择任务，然后以卡片形式展示对应的 .jsonl 文件中的商品。</p>
-                <p>将支持筛选“仅看AI推荐”的商品，并可以查看AI分析详情。</p>
+                <div class="section-header">
+                    <h2>结果查看</h2>
+                </div>
+                <div class="results-filter-bar">
+                    <select id="result-file-selector"><option>加载中...</option></select>
+                    <label>
+                        <input type="checkbox" id="recommended-only-checkbox">
+                        仅看AI推荐
+                    </label>
+                    <button id="refresh-results-btn" class="control-button">🔄 刷新</button>
+                </div>
+                <div id="results-grid-container">
+                    <p>请先选择一个结果文件。</p>
+                </div>
             </section>`,
         logs: () => `
             <section id="logs-section" class="content-section">
@@ -31,16 +42,68 @@ document.addEventListener('DOMContentLoaded', function() {
         settings: () => `
             <section id="settings-section" class="content-section">
                 <h2>系统设置</h2>
-                <p>这里将管理项目的核心配置。</p>
-                <ul>
-                    <li><strong>登录状态:</strong> 检查 xianyu_state.json 文件是否存在并有效。</li>
-                    <li><strong>环境变量:</strong> 管理 .env 文件中的 OpenAI 和 ntfy 配置。</li>
-                    <li><strong>Prompt 模板:</strong> 在线查看和编辑 prompts/ 目录下的分析标准文件。</li>
-                </ul>
+                <div class="settings-card">
+                    <h3>系统状态检查</h3>
+                    <div id="system-status-container"><p>正在加载状态...</p></div>
+                </div>
+                <div class="settings-card">
+                    <h3>Prompt 管理</h3>
+                    <div class="prompt-manager">
+                        <div class="prompt-list-container">
+                            <label for="prompt-selector">选择要编辑的 Prompt:</label>
+                            <select id="prompt-selector"><option>加载中...</option></select>
+                        </div>
+                        <div class="prompt-editor-container">
+                            <textarea id="prompt-editor" spellcheck="false" disabled placeholder="请先从上方选择一个 Prompt 文件进行编辑..."></textarea>
+                            <button id="save-prompt-btn" class="control-button primary-btn" disabled>保存更改</button>
+                        </div>
+                    </div>
+                </div>
             </section>`
     };
 
     // --- API Functions ---
+    async function fetchPrompts() {
+        try {
+            const response = await fetch('/api/prompts');
+            if (!response.ok) throw new Error('无法获取Prompt列表');
+            return await response.json();
+        } catch (error) {
+            console.error(error);
+            return [];
+        }
+    }
+
+    async function fetchPromptContent(filename) {
+        try {
+            const response = await fetch(`/api/prompts/${filename}`);
+            if (!response.ok) throw new Error(`无法获取Prompt文件 ${filename} 的内容`);
+            return await response.json();
+        } catch (error) {
+            console.error(error);
+            return null;
+        }
+    }
+
+    async function updatePrompt(filename, content) {
+        try {
+            const response = await fetch(`/api/prompts/${filename}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: content }),
+            });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || '更新Prompt失败');
+            }
+            return await response.json();
+        } catch (error) {
+            console.error(`无法更新Prompt ${filename}:`, error);
+            alert(`错误: ${error.message}`);
+            return null;
+        }
+    }
+
     async function createTaskWithAI(data) {
         try {
             const response = await fetch(`/api/tasks/generate`, {
@@ -117,6 +180,33 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    async function fetchResultFiles() {
+        try {
+            const response = await fetch('/api/results/files');
+            if (!response.ok) throw new Error('无法获取结果文件列表');
+            return await response.json();
+        } catch (error) {
+            console.error(error);
+            return null;
+        }
+    }
+
+    async function fetchResultContent(filename, recommendedOnly) {
+        try {
+            const params = new URLSearchParams({
+                page: 1,
+                limit: 100, // Fetch a decent number of items
+                recommended_only: recommendedOnly
+            });
+            const response = await fetch(`/api/results/${filename}?${params}`);
+            if (!response.ok) throw new Error(`无法获取文件 ${filename} 的内容`);
+            return await response.json();
+        } catch (error) {
+            console.error(error);
+            return null;
+        }
+    }
+
     async function fetchSystemStatus() {
         try {
             const response = await fetch('/api/settings/status');
@@ -144,6 +234,85 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // --- Render Functions ---
+    function renderSystemStatus(status) {
+        if (!status) return '<p>无法加载系统状态。</p>';
+
+        const renderStatusTag = (isOk) => isOk 
+            ? `<span class="tag status-ok">正常</span>` 
+            : `<span class="tag status-error">异常</span>`;
+
+        const env = status.env_file || {};
+
+        return `
+            <ul class="status-list">
+                <li class="status-item">
+                    <span class="label">登录状态文件 (xianyu_state.json)</span>
+                    <span class="value">${renderStatusTag(status.login_state_file && status.login_state_file.exists)}</span>
+                </li>
+                <li class="status-item">
+                    <span class="label">环境变量文件 (.env)</span>
+                    <span class="value">${renderStatusTag(env.exists)}</span>
+                </li>
+                <li class="status-item">
+                    <span class="label">OpenAI API Key</span>
+                    <span class="value">${renderStatusTag(env.openai_api_key_set)}</span>
+                </li>
+                <li class="status-item">
+                    <span class="label">OpenAI Base URL</span>
+                    <span class="value">${renderStatusTag(env.openai_base_url_set)}</span>
+                </li>
+                <li class="status-item">
+                    <span class="label">OpenAI Model Name</span>
+                    <span class="value">${renderStatusTag(env.openai_model_name_set)}</span>
+                </li>
+                <li class="status-item">
+                    <span class="label">Ntfy Topic URL</span>
+                    <span class="value">${renderStatusTag(env.ntfy_topic_url_set)}</span>
+                </li>
+            </ul>
+        `;
+    }
+
+    function renderResultsGrid(data) {
+        if (!data || !data.items || data.items.length === 0) {
+            return '<p>没有找到符合条件的商品记录。</p>';
+        }
+
+        const cards = data.items.map(item => {
+            const info = item.商品信息 || {};
+            const seller = item.卖家信息 || {};
+            const ai = item.ai_analysis || {};
+
+            const isRecommended = ai.is_recommended === true;
+            const recommendationClass = isRecommended ? 'recommended' : 'not-recommended';
+            const recommendationText = isRecommended ? '推荐' : (ai.is_recommended === false ? '不推荐' : '待定');
+            
+            const imageUrl = (info.商品图片列表 && info.商品图片列表[0]) ? info.商品图片列表[0] : 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+
+            return `
+            <div class="result-card" data-item='${JSON.stringify(item)}'>
+                <div class="card-image">
+                    <a href="${info.商品链接 || '#'}" target="_blank"><img src="${imageUrl}" alt="${info.商品标题 || '商品图片'}" loading="lazy"></a>
+                </div>
+                <div class="card-content">
+                    <h3 class="card-title"><a href="${info.商品链接 || '#'}" target="_blank" title="${info.商品标题 || ''}">${info.商品标题 || '无标题'}</a></h3>
+                    <p class="card-price">${info.当前售价 || '价格未知'}</p>
+                    <div class="card-ai-summary ${recommendationClass}">
+                        <strong>AI建议: ${recommendationText}</strong>
+                        <p title="${ai.reason || ''}">原因: ${ai.reason || '无分析'}</p>
+                    </div>
+                    <div class="card-footer">
+                        <span class="seller-info">卖家: ${info.卖家昵称 || seller.卖家昵称 || '未知'}</span>
+                        <button class="action-btn view-json-btn">查看详情</button>
+                    </div>
+                </div>
+            </div>
+            `;
+        }).join('');
+
+        return `<div id="results-grid">${cards}</div>`;
+    }
+
     function renderTasksTable(tasks) {
         if (!tasks || tasks.length === 0) {
             return '<p>没有找到任何任务。请点击右上角“创建新任务”来添加一个。</p>';
@@ -209,17 +378,121 @@ document.addEventListener('DOMContentLoaded', function() {
                 const container = document.getElementById('tasks-table-container');
                 const tasks = await fetchTasks();
                 container.innerHTML = renderTasksTable(tasks);
+            } else if (sectionId === 'results') {
+                await initializeResultsView();
             } else if (sectionId === 'logs') {
                 const logContainer = document.getElementById('log-content-container');
                 const logs = await fetchLogs();
                 logContainer.textContent = logs.content;
                 // 自动滚动到底部
                 logContainer.scrollTop = logContainer.scrollHeight;
+            } else if (sectionId === 'settings') {
+                await initializeSettingsView();
             }
 
         } else {
             mainContent.innerHTML = '<section class="content-section active"><h2>页面未找到</h2></section>';
         }
+    }
+
+    async function fetchAndRenderResults() {
+        const selector = document.getElementById('result-file-selector');
+        const checkbox = document.getElementById('recommended-only-checkbox');
+        const container = document.getElementById('results-grid-container');
+
+        if (!selector || !checkbox || !container) return;
+
+        const selectedFile = selector.value;
+        const recommendedOnly = checkbox.checked;
+
+        if (!selectedFile) {
+            container.innerHTML = '<p>请先选择一个结果文件。</p>';
+            return;
+        }
+
+        container.innerHTML = '<p>正在加载结果...</p>';
+        const data = await fetchResultContent(selectedFile, recommendedOnly);
+        container.innerHTML = renderResultsGrid(data);
+    }
+
+    async function initializeResultsView() {
+        const selector = document.getElementById('result-file-selector');
+        const checkbox = document.getElementById('recommended-only-checkbox');
+        const refreshBtn = document.getElementById('refresh-results-btn');
+
+        const fileData = await fetchResultFiles();
+        if (fileData && fileData.files && fileData.files.length > 0) {
+            selector.innerHTML = fileData.files.map(f => `<option value="${f}">${f}</option>`).join('');
+            selector.addEventListener('change', fetchAndRenderResults);
+            checkbox.addEventListener('change', fetchAndRenderResults);
+            refreshBtn.addEventListener('click', fetchAndRenderResults);
+            // Initial load
+            await fetchAndRenderResults();
+        } else {
+            selector.innerHTML = '<option value="">没有可用的结果文件</option>';
+            document.getElementById('results-grid-container').innerHTML = '<p>没有找到任何结果文件。请先运行监控任务。</p>';
+        }
+    }
+
+    async function initializeSettingsView() {
+        // 1. Render System Status
+        const statusContainer = document.getElementById('system-status-container');
+        const status = await fetchSystemStatus();
+        statusContainer.innerHTML = renderSystemStatus(status);
+
+        // 2. Setup Prompt Editor
+        const promptSelector = document.getElementById('prompt-selector');
+        const promptEditor = document.getElementById('prompt-editor');
+        const savePromptBtn = document.getElementById('save-prompt-btn');
+
+        const prompts = await fetchPrompts();
+        if (prompts && prompts.length > 0) {
+            promptSelector.innerHTML = '<option value="">-- 请选择 --</option>' + prompts.map(p => `<option value="${p}">${p}</option>`).join('');
+        } else {
+            promptSelector.innerHTML = '<option value="">没有找到Prompt文件</option>';
+        }
+
+        promptSelector.addEventListener('change', async () => {
+            const selectedFile = promptSelector.value;
+            if (selectedFile) {
+                promptEditor.value = "正在加载...";
+                promptEditor.disabled = true;
+                savePromptBtn.disabled = true;
+                const data = await fetchPromptContent(selectedFile);
+                if (data) {
+                    promptEditor.value = data.content;
+                    promptEditor.disabled = false;
+                    savePromptBtn.disabled = false;
+                } else {
+                    promptEditor.value = `加载文件 ${selectedFile} 失败。`;
+                }
+            } else {
+                promptEditor.value = "请先从上方选择一个 Prompt 文件进行编辑...";
+                promptEditor.disabled = true;
+                savePromptBtn.disabled = true;
+            }
+        });
+
+        savePromptBtn.addEventListener('click', async () => {
+            const selectedFile = promptSelector.value;
+            const content = promptEditor.value;
+            if (!selectedFile) {
+                alert("请先选择一个要保存的Prompt文件。");
+                return;
+            }
+
+            savePromptBtn.disabled = true;
+            savePromptBtn.textContent = '保存中...';
+
+            const result = await updatePrompt(selectedFile, content);
+            if (result) {
+                alert(result.message || "保存成功！");
+            }
+            // No need to show alert on failure, as updatePrompt already does.
+            
+            savePromptBtn.disabled = false;
+            savePromptBtn.textContent = '保存更改';
+        });
     }
 
     // Handle navigation clicks
@@ -247,7 +520,16 @@ document.addEventListener('DOMContentLoaded', function() {
         const row = button.closest('tr');
         const taskId = row ? row.dataset.taskId : null;
 
-        if (button.matches('.edit-btn')) {
+        if (button.matches('.view-json-btn')) {
+            const card = button.closest('.result-card');
+            const itemData = JSON.parse(card.dataset.item);
+            const jsonContent = document.getElementById('json-viewer-content');
+            jsonContent.textContent = JSON.stringify(itemData, null, 2);
+            
+            const modal = document.getElementById('json-viewer-modal');
+            modal.style.display = 'flex';
+            setTimeout(() => modal.classList.add('visible'), 10);
+        } else if (button.matches('.edit-btn')) {
             const taskData = JSON.parse(row.dataset.task);
             
             row.classList.add('editing');
@@ -483,4 +765,24 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initial load
     navigateTo(window.location.hash || '#tasks');
     refreshSystemStatus();
+
+    // --- JSON Viewer Modal Logic ---
+    const jsonViewerModal = document.getElementById('json-viewer-modal');
+    if (jsonViewerModal) {
+        const closeBtn = document.getElementById('close-json-viewer-btn');
+        
+        const closeModal = () => {
+            jsonViewerModal.classList.remove('visible');
+            setTimeout(() => {
+                jsonViewerModal.style.display = 'none';
+            }, 300);
+        };
+
+        closeBtn.addEventListener('click', closeModal);
+        jsonViewerModal.addEventListener('click', (event) => {
+            if (event.target === jsonViewerModal) {
+                closeModal();
+            }
+        });
+    }
 });
