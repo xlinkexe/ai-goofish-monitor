@@ -48,10 +48,12 @@ graph TD
 ├── config.json         # 核心配置文件，用于定义所有监控任务
 ├── login.py            # 首次运行必须执行，用于获取并保存登录Cookie
 ├── spider_v2.py        # 主程序：集成了爬取、分析、通知的完整逻辑
+├── prompt_generator.py # AI分析标准生成脚本
 ├── requirements.txt    # Python依赖库
 ├── README.md           # 就是你正在看的这个文件
 ├── prompts/            # 存放不同任务的AI分析指令(Prompt)
-│   └── macbook_prompt.txt
+│   ├── base_prompt.txt
+│   └── macbook_criteria.txt
 ├── images/             # (自动创建) 存放下载的商品图片
 └── *.jsonl             # (自动创建) 存放每个任务的抓取和分析结果
 ```
@@ -96,7 +98,7 @@ python login.py
 
 打开 `config.json` 文件，根据你的需求添加或修改监控任务。你可以定义多个任务，并通过 `"enabled": true/false` 来控制其是否在下次运行时启动。
 
-每个任务都可以关联一个位于 `prompts/` 目录下的AI分析指令文件。你可以参考 `prompts/macbook_prompt.txt` 创建自己的指令。
+每个任务都可以关联一个位于 `prompts/` 目录下的AI分析指令文件。你可以参考 `prompts/macbook_criteria.txt` 创建自己的指令，或使用 `prompt_generator.py` 脚本自动生成。
 
 ### 5. 启动监控！
 
@@ -112,25 +114,34 @@ python spider_v2.py
 python spider_v2.py --debug-limit 2
 ```
 
-### 6. (可选) 使用 AI 生成自定义分析标准
+### 6. (可选) 一键创建新监控任务
 
-如果你想监控一个新的商品品类，但觉得从零开始编写 `prompts/` 目录下的分析标准文件（例如 `macbook_criteria.txt`）太复杂，可以使用 `prompt_generator.py` 脚本来辅助你。
+如果你想监控一个新的商品品类，但觉得从零开始编写分析标准文件和修改 `config.json` 太过繁琐，`prompt_generator.py` 脚本可以帮你一键完成。
 
-这个脚本会读取一个参考标准（默认为 `macbook_criteria.txt`），结合你用自然语言描述的购买需求，利用 AI 生成一个全新的、结构化的分析标准文件。
+这个脚本会：
+1.  读取一个参考标准（默认为 `prompts/macbook_criteria.txt`）。
+2.  结合你用自然语言描述的购买需求，利用 AI 生成一个全新的、结构化的分析标准文件。
+3.  根据你提供的任务参数（如关键词、价格等），自动在 `config.json` 中创建并启用一个新的监控任务。
 
 **使用方法:**
 
-在终端运行以下命令，并用你自己的需求替换 `--description` 的内容：
+在终端运行以下命令，并根据你的实际需求修改所有参数：
 
 ```bash
 python prompt_generator.py \
   --description "我想买一台95新以上的索尼A7M4相机，预算在10000到13000元之间，快门数要低于5000。必须是国行且配件齐全。优先考虑个人卖家，不接受商家或贩子。" \
-  --output prompts/sony_a7m4_criteria.txt
+  --output prompts/sony_a7m4_criteria.txt \
+  --task-name "Sony A7M4" \
+  --keyword "a7m4" \
+  --min-price "10000" \
+  --max-price "13000"
 ```
 
-执行成功后，一个新的标准文件 `prompts/sony_a7m4_criteria.txt` 就会被创建。
+执行成功后：
+- 一个新的标准文件 `prompts/sony_a7m4_criteria.txt` 会被创建。
+- `config.json` 文件会被自动更新，加入一个名为 "Sony A7M4" 的、**默认启用**的新任务。
 
-之后，你就可以在 `config.json` 中创建一个新任务，并将 `ai_prompt_criteria_file` 指向这个新生成的文件，就像 `MacBook Air M1` 任务一样。
+现在，你无需任何手动配置，可以直接运行 `python spider_v2.py` 来启动包含新任务在内的所有监控。
 
 ## ⚠️ 注意事项
 

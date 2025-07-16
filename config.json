@@ -11,13 +11,14 @@
     "ai_prompt_criteria_file": "prompts/macbook_criteria.txt"
   },
   {
-    "task_name": "Sony A7M4 (示例，默认禁用)",
-    "enabled": false,
-    "keyword": "a7m4",
-    "max_pages": 2,
+    "task_name": "DJI Mini 3 Pro",
+    "enabled": true,
+    "keyword": "mini 3 pro",
+    "max_pages": 3,
     "personal_only": true,
-    "min_price": "10000",
-    "max_price": "13000",
-    "ai_prompt_file": "prompts/sony_a7m4_criteria.txt"
+    "ai_prompt_base_file": "prompts/base_prompt.txt",
+    "ai_prompt_criteria_file": "prompts/dji_mini3_criteria.txt",
+    "min_price": "3500",
+    "max_price": "4500"
   }
 ]

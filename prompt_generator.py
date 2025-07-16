@@ -2,6 +2,7 @@ import os
 import sys
 import argparse
 import asyncio
+import json
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
@@ -82,16 +83,31 @@ async def generate_criteria(user_description: str, reference_file_path: str) -> 
 
 async def main():
     parser = argparse.ArgumentParser(
-        description="使用AI根据用户需求和参考范例，生成闲鱼监控机器人的分析标准文件。",
+        description="使用AI根据用户需求和参考范例，生成闲鱼监控机器人的分析标准文件，并自动更新config.json。",
         epilog="""
 使用示例:
-  python prompt_generator.py --description "我想买一台索尼A7M4相机，预算1万到1万3，要求95新以上，快门数低于5000，必须是国行箱说全，个人卖家优先。" --output prompts/sony_a7m4_criteria.txt
+  python prompt_generator.py \\
+    --description "我想买一台95新以上的索尼A7M4相机，预算在10000到13000元之间..." \\
+    --output prompts/sony_a7m4_criteria.txt \\
+    --task-name "Sony A7M4" \\
+    --keyword "a7m4" \\
+    --min-price "10000" \\
+    --max-price "13000"
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--description", type=str, required=True, help="你详细的购买需求描述。")
     parser.add_argument("--output", type=str, required=True, help="新生成的分析标准文件的保存路径。")
     parser.add_argument("--reference", type=str, default="prompts/macbook_criteria.txt", help="作为模仿范例的参考文件路径。")
+    # New arguments for config.json
+    parser.add_argument("--task-name", type=str, required=True, help="新任务的名称 (例如: 'Sony A7M4')。")
+    parser.add_argument("--keyword", type=str, required=True, help="新任务的搜索关键词 (例如: 'a7m4')。")
+    parser.add_argument("--min-price", type=str, help="最低价格。")
+    parser.add_argument("--max-price", type=str, help="最高价格。")
+    parser.add_argument("--max-pages", type=int, default=3, help="最大搜索页数 (默认: 3)。")
+    parser.add_argument('--no-personal-only', dest='personal_only', action='store_false', help="如果设置，则不筛选个人卖家。")
+    parser.set_defaults(personal_only=True)
+    parser.add_argument("--config-file", type=str, default="config.json", help="任务配置文件的路径 (默认: config.json)。")
     args = parser.parse_args()
 
     # Ensure the output directory exists
@@ -106,9 +122,50 @@ async def main():
             with open(args.output, 'w', encoding='utf-8') as f:
                 f.write(generated_criteria)
             print(f"\n成功！新的分析标准已保存到: {args.output}")
-            print("现在，你可以在 `config.json` 中引用这个新文件来创建一个新的监控任务。")
         except IOError as e:
             sys.exit(f"错误: 写入输出文件失败: {e}")
+
+        # Now, update config.json
+        print(f"正在更新配置文件: {args.config_file}")
+        try:
+            # Read existing config
+            config_data = []
+            if os.path.exists(args.config_file):
+                with open(args.config_file, 'r', encoding='utf-8') as f:
+                    config_data = json.load(f)
+
+            # Create new task entry
+            new_task = {
+                "task_name": args.task_name,
+                "enabled": True,
+                "keyword": args.keyword,
+                "max_pages": args.max_pages,
+                "personal_only": args.personal_only,
+                "ai_prompt_base_file": "prompts/base_prompt.txt",
+                "ai_prompt_criteria_file": args.output
+            }
+            if args.min_price:
+                new_task["min_price"] = args.min_price
+            if args.max_price:
+                new_task["max_price"] = args.max_price
+
+            # Append new task
+            config_data.append(new_task)
+
+            # Write back to config file
+            with open(args.config_file, 'w', encoding='utf-8') as f:
+                json.dump(config_data, f, ensure_ascii=False, indent=2)
+            
+            print(f"成功！新任务 '{args.task_name}' 已添加到 {args.config_file} 并已启用。")
+            print("现在，你可以直接运行 `python spider_v2.py` 来启动包括新任务在内的所有监控。")
+
+        except FileNotFoundError:
+            # This case is handled by os.path.exists, but kept for safety
+            sys.exit(f"错误: 配置文件未找到: {args.config_file}")
+        except json.JSONDecodeError:
+            sys.exit(f"错误: 配置文件 {args.config_file} 格式错误，无法解析。")
+        except IOError as e:
+            sys.exit(f"错误: 读写配置文件失败: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())
