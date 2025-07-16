@@ -542,7 +542,6 @@ async def get_ai_analysis(product_data, image_paths=None, prompt_text=""):
     response = await client.chat.completions.create(
         model=MODEL_NAME,
         messages=messages,
-        max_tokens=4096, # 调整Token以适应更长的上下文和JSON输出
         response_format={"type": "json_object"}
     )
 
