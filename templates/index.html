@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>闲鱼智能监控机器人 - 管理后台</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <h1>闲鱼智能监控机器人 - 管理后台</h1>
+        <div class="header-controls">
+            <div class="system-status">状态: <span id="status-indicator" class="status-stopped"></span><span id="status-text">已停止</span></div>
+            <button id="start-all-tasks" class="control-button">🚀 全部启动</button>
+            <button id="stop-all-tasks" class="control-button" style="display: none;">🛑 全部停止</button>
+        </div>
+    </header>
+    <div class="container">
+        <aside>
+            <nav>
+                <ul>
+                    <li><a href="#tasks" class="nav-link active">任务管理</a></li>
+                    <li><a href="#results" class="nav-link">结果查看</a></li>
+                    <li><a href="#settings" class="nav-link">系统设置</a></li>
+                </ul>
+            </nav>
+        </aside>
+        <main id="main-content">
+            <!-- 内容将根据侧边栏选择动态加载 -->
+        </main>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

@@ -5,3 +5,4 @@ xianyu_state.json
 .aider*
 images/
 *.jsonl
+__pycache__/
