@@ -1,0 +1,23 @@
+[
+  {
+    "task_name": "MacBook Air M1",
+    "enabled": true,
+    "keyword": "macbook air m1",
+    "max_pages": 3,
+    "personal_only": true,
+    "min_price": "3000",
+    "max_price": "5000",
+    "ai_prompt_base_file": "prompts/base_prompt.txt",
+    "ai_prompt_criteria_file": "prompts/macbook_criteria.txt"
+  },
+  {
+    "task_name": "Sony A7M4 (示例，默认禁用)",
+    "enabled": false,
+    "keyword": "a7m4",
+    "max_pages": 2,
+    "personal_only": true,
+    "min_price": "10000",
+    "max_price": "13000",
+    "ai_prompt_file": "prompts/camera_prompt.txt"
+  }
+]

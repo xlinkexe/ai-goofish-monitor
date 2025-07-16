@@ -3,3 +3,5 @@
 xianyu_state.json
 .env
 .aider*
+images/
+*.jsonl
