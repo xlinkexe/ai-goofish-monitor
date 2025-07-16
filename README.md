@@ -112,6 +112,26 @@ python spider_v2.py
 python spider_v2.py --debug-limit 2
 ```
 
+### 6. (可选) 使用 AI 生成自定义分析标准
+
+如果你想监控一个新的商品品类，但觉得从零开始编写 `prompts/` 目录下的分析标准文件（例如 `macbook_criteria.txt`）太复杂，可以使用 `prompt_generator.py` 脚本来辅助你。
+
+这个脚本会读取一个参考标准（默认为 `macbook_criteria.txt`），结合你用自然语言描述的购买需求，利用 AI 生成一个全新的、结构化的分析标准文件。
+
+**使用方法:**
+
+在终端运行以下命令，并用你自己的需求替换 `--description` 的内容：
+
+```bash
+python prompt_generator.py \
+  --description "我想买一台95新以上的索尼A7M4相机，预算在10000到13000元之间，快门数要低于5000。必须是国行且配件齐全。优先考虑个人卖家，不接受商家或贩子。" \
+  --output prompts/sony_a7m4_criteria.txt
+```
+
+执行成功后，一个新的标准文件 `prompts/sony_a7m4_criteria.txt` 就会被创建。
+
+之后，你就可以在 `config.json` 中创建一个新任务，并将 `ai_prompt_criteria_file` 指向这个新生成的文件，就像 `MacBook Air M1` 任务一样。
+
 ## ⚠️ 注意事项
 
 - 请遵守闲鱼的用户协议和robots.txt规则，不要进行过于频繁的请求，以免对服务器造成负担或导致账号被限制。

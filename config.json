@@ -18,6 +18,6 @@
     "personal_only": true,
     "min_price": "10000",
     "max_price": "13000",
-    "ai_prompt_file": "prompts/camera_prompt.txt"
+    "ai_prompt_file": "prompts/sony_a7m4_criteria.txt"
   }
 ]
