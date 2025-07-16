@@ -13,6 +13,16 @@
 - **即时通知**: 通过 [ntfy.sh](https://ntfy.sh/) 将符合AI推荐的商品立即推送到你的手机或桌面。
 - **健壮的反爬策略**: 模拟真人操作，包含多种随机延迟和用户行为，提高稳定性。
 
+## 页面截图
+后台任务管理
+![img.png](img.png)
+
+后台监控截图
+![img_1.png](img_1.png)
+
+ntf通知截图
+![img_2.png](img_2.png)
+
 ## 🚀 快速开始 (Web UI 推荐)
 
 推荐使用 Web 管理界面来操作本项目，体验最佳。
@@ -21,8 +31,8 @@
 
 克隆本项目到本地:
 ```bash
-git clone https://github.com/USERNAME/REPONAME.git
-cd REPONAME
+git clone https://github.com/dingyufei615/ai-goofish-monitor
+cd ai-goofish-monitor
 ```
 
 安装所需的Python依赖：
