@@ -3,6 +3,7 @@ import sys
 import argparse
 import asyncio
 import json
+import aiofiles
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
@@ -13,14 +14,14 @@ BASE_URL = os.getenv("OPENAI_BASE_URL")
 MODEL_NAME = os.getenv("OPENAI_MODEL_NAME")
 
 # Check configuration
-if not all([API_KEY, BASE_URL, MODEL_NAME]):
-    sys.exit("错误：请确保在 .env 文件中完整设置了 OPENAI_API_KEY, OPENAI_BASE_URL 和 OPENAI_MODEL_NAME。")
+if not all([BASE_URL, MODEL_NAME]):
+    raise ValueError("错误：请确保在 .env 文件中完整设置了 OPENAI_BASE_URL 和 OPENAI_MODEL_NAME。(OPENAI_API_KEY 对于某些服务是可选的)")
 
 # Initialize OpenAI client
 try:
     client = AsyncOpenAI(api_key=API_KEY, base_url=BASE_URL)
 except Exception as e:
-    sys.exit(f"初始化 OpenAI 客户端时出错: {e}")
+    raise RuntimeError(f"初始化 OpenAI 客户端时出错: {e}") from e
 
 # The meta-prompt to instruct the AI
 META_PROMPT_TEMPLATE = """
@@ -57,9 +58,9 @@ async def generate_criteria(user_description: str, reference_file_path: str) -> 
         with open(reference_file_path, 'r', encoding='utf-8') as f:
             reference_text = f.read()
     except FileNotFoundError:
-        sys.exit(f"错误: 参考文件未找到: {reference_file_path}")
+        raise FileNotFoundError(f"参考文件未找到: {reference_file_path}")
     except IOError as e:
-        sys.exit(f"错误: 读取参考文件失败: {e}")
+        raise IOError(f"读取参考文件失败: {e}")
 
     print("正在构建发送给AI的指令...")
     prompt = META_PROMPT_TEMPLATE.format(
@@ -78,7 +79,40 @@ async def generate_criteria(user_description: str, reference_file_path: str) -> 
         print("AI已成功生成内容。")
         return generated_text.strip()
     except Exception as e:
-        sys.exit(f"调用 OpenAI API 时出错: {e}")
+        print(f"调用 OpenAI API 时出错: {e}")
+        raise e
+
+
+async def update_config_with_new_task(new_task: dict, config_file: str = "config.json"):
+    """
+    将一个新任务添加到指定的JSON配置文件中。
+    """
+    print(f"正在更新配置文件: {config_file}")
+    try:
+        # 读取现有配置
+        config_data = []
+        if os.path.exists(config_file):
+            async with aiofiles.open(config_file, 'r', encoding='utf-8') as f:
+                content = await f.read()
+                # 处理空文件的情况
+                if content.strip():
+                    config_data = json.loads(content)
+
+        # 追加新任务
+        config_data.append(new_task)
+
+        # 写回配置文件
+        async with aiofiles.open(config_file, 'w', encoding='utf-8') as f:
+            await f.write(json.dumps(config_data, ensure_ascii=False, indent=2))
+        
+        print(f"成功！新任务 '{new_task.get('task_name')}' 已添加到 {config_file} 并已启用。")
+        return True
+    except json.JSONDecodeError:
+        sys.stderr.write(f"错误: 配置文件 {config_file} 格式错误，无法解析。\n")
+        return False
+    except IOError as e:
+        sys.stderr.write(f"错误: 读写配置文件失败: {e}\n")
+        return False
 
 
 async def main():
@@ -125,47 +159,25 @@ async def main():
         except IOError as e:
             sys.exit(f"错误: 写入输出文件失败: {e}")
 
-        # Now, update config.json
-        print(f"正在更新配置文件: {args.config_file}")
-        try:
-            # Read existing config
-            config_data = []
-            if os.path.exists(args.config_file):
-                with open(args.config_file, 'r', encoding='utf-8') as f:
-                    config_data = json.load(f)
+        # 创建新任务条目
+        new_task = {
+            "task_name": args.task_name,
+            "enabled": True,
+            "keyword": args.keyword,
+            "max_pages": args.max_pages,
+            "personal_only": args.personal_only,
+            "ai_prompt_base_file": "prompts/base_prompt.txt",
+            "ai_prompt_criteria_file": args.output
+        }
+        if args.min_price:
+            new_task["min_price"] = args.min_price
+        if args.max_price:
+            new_task["max_price"] = args.max_price
 
-            # Create new task entry
-            new_task = {
-                "task_name": args.task_name,
-                "enabled": True,
-                "keyword": args.keyword,
-                "max_pages": args.max_pages,
-                "personal_only": args.personal_only,
-                "ai_prompt_base_file": "prompts/base_prompt.txt",
-                "ai_prompt_criteria_file": args.output
-            }
-            if args.min_price:
-                new_task["min_price"] = args.min_price
-            if args.max_price:
-                new_task["max_price"] = args.max_price
-
-            # Append new task
-            config_data.append(new_task)
-
-            # Write back to config file
-            with open(args.config_file, 'w', encoding='utf-8') as f:
-                json.dump(config_data, f, ensure_ascii=False, indent=2)
-            
-            print(f"成功！新任务 '{args.task_name}' 已添加到 {args.config_file} 并已启用。")
+        # 使用重构的函数更新 config.json
+        success = await update_config_with_new_task(new_task, args.config_file)
+        if success:
             print("现在，你可以直接运行 `python spider_v2.py` 来启动包括新任务在内的所有监控。")
-
-        except FileNotFoundError:
-            # This case is handled by os.path.exists, but kept for safety
-            sys.exit(f"错误: 配置文件未找到: {args.config_file}")
-        except json.JSONDecodeError:
-            sys.exit(f"错误: 配置文件 {args.config_file} 格式错误，无法解析。")
-        except IOError as e:
-            sys.exit(f"错误: 读写配置文件失败: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())

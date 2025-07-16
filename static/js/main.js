@@ -33,6 +33,46 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     // --- API Functions ---
+    async function createTaskWithAI(data) {
+        try {
+            const response = await fetch(`/api/tasks/generate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data),
+            });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || '通过AI创建任务失败');
+            }
+            console.log(`AI任务创建成功!`);
+            return await response.json();
+        } catch (error) {
+            console.error(`无法通过AI创建任务:`, error);
+            alert(`错误: ${error.message}`);
+            return null;
+        }
+    }
+
+    async function deleteTask(taskId) {
+        try {
+            const response = await fetch(`/api/tasks/${taskId}`, {
+                method: 'DELETE',
+            });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || '删除任务失败');
+            }
+            console.log(`任务 ${taskId} 删除成功!`);
+            return await response.json();
+        } catch (error) {
+            console.error(`无法删除任务 ${taskId}:`, error);
+            alert(`错误: ${error.message}`);
+            return null;
+        }
+    }
+
     async function updateTask(taskId, data) {
         try {
             const response = await fetch(`/api/tasks/${taskId}`, {
@@ -83,12 +123,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     <th>关键词</th>
                     <th>价格范围</th>
                     <th>筛选条件</th>
+                    <th>AI 标准</th>
                     <th>操作</th>
                 </tr>
             </thead>`;
 
         const tableBody = tasks.map(task => `
-            <tr data-task-id="${task.id}">
+            <tr data-task-id="${task.id}" data-task='${JSON.stringify(task)}'>
                 <td>
                     <label class="switch">
                         <input type="checkbox" ${task.enabled ? 'checked' : ''}>
@@ -99,6 +140,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <td><span class="tag">${task.keyword}</span></td>
                 <td>${task.min_price || '不限'} - ${task.max_price || '不限'}</td>
                 <td>${task.personal_only ? '<span class="tag personal">个人闲置</span>' : ''}</td>
+                <td>${(task.ai_prompt_criteria_file || 'N/A').replace('prompts/', '')}</td>
                 <td>
                     <button class="action-btn edit-btn">编辑</button>
                     <button class="action-btn delete-btn">删除</button>
@@ -157,7 +199,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // --- Event Delegation for dynamic content ---
-    mainContent.addEventListener('click', (event) => {
+    mainContent.addEventListener('click', async (event) => {
         const target = event.target;
         const button = target.closest('button'); // Find the closest button element
         if (!button) return;
@@ -166,18 +208,83 @@ document.addEventListener('DOMContentLoaded', function() {
         const taskId = row ? row.dataset.taskId : null;
 
         if (button.matches('.edit-btn')) {
-            alert(`编辑功能待实现 (任务ID: ${taskId})`);
+            const taskData = JSON.parse(row.dataset.task);
+            
+            row.classList.add('editing');
+            row.innerHTML = `
+                <td>
+                    <label class="switch">
+                        <input type="checkbox" ${taskData.enabled ? 'checked' : ''} data-field="enabled">
+                        <span class="slider round"></span>
+                    </label>
+                </td>
+                <td><input type="text" value="${taskData.task_name}" data-field="task_name"></td>
+                <td><input type="text" value="${taskData.keyword}" data-field="keyword"></td>
+                <td>
+                    <input type="text" value="${taskData.min_price || ''}" placeholder="不限" data-field="min_price" style="width: 60px;"> -
+                    <input type="text" value="${taskData.max_price || ''}" placeholder="不限" data-field="max_price" style="width: 60px;">
+                </td>
+                <td>
+                    <label>
+                        <input type="checkbox" ${taskData.personal_only ? 'checked' : ''} data-field="personal_only"> 个人闲置
+                    </label>
+                </td>
+                <td>${(taskData.ai_prompt_criteria_file || 'N/A').replace('prompts/', '')}</td>
+                <td>
+                    <button class="action-btn save-btn">保存</button>
+                    <button class="action-btn cancel-btn">取消</button>
+                </td>
+            `;
+
         } else if (button.matches('.delete-btn')) {
-            alert(`删除功能待实现 (任务ID: ${taskId})`);
+            const taskName = row.querySelector('td:nth-child(2)').textContent;
+            if (confirm(`你确定要删除任务 "${taskName}" 吗?`)) {
+                const result = await deleteTask(taskId);
+                if (result) {
+                    row.remove();
+                }
+            }
         } else if (button.matches('#add-task-btn')) {
-            alert('创建新任务功能待实现');
+            const modal = document.getElementById('add-task-modal');
+            modal.style.display = 'flex';
+            // Use a short timeout to allow the display property to apply before adding the transition class
+            setTimeout(() => modal.classList.add('visible'), 10);
+        } else if (button.matches('.save-btn')) {
+            const taskNameInput = row.querySelector('input[data-field="task_name"]');
+            const keywordInput = row.querySelector('input[data-field="keyword"]');
+            if (!taskNameInput.value.trim() || !keywordInput.value.trim()) {
+                alert('任务名称和关键词不能为空。');
+                return;
+            }
+
+            const inputs = row.querySelectorAll('input[data-field]');
+            const updatedData = {};
+            inputs.forEach(input => {
+                const field = input.dataset.field;
+                if (input.type === 'checkbox') {
+                    updatedData[field] = input.checked;
+                } else {
+                    updatedData[field] = input.value.trim() === '' ? null : input.value.trim();
+                }
+            });
+
+            const result = await updateTask(taskId, updatedData);
+            if (result && result.task) {
+                const container = document.getElementById('tasks-table-container');
+                const tasks = await fetchTasks();
+                container.innerHTML = renderTasksTable(tasks);
+            }
+        } else if (button.matches('.cancel-btn')) {
+            const container = document.getElementById('tasks-table-container');
+            const tasks = await fetchTasks();
+            container.innerHTML = renderTasksTable(tasks);
         }
     });
 
     mainContent.addEventListener('change', async (event) => {
         const target = event.target;
-        // Check if the changed element is a toggle switch
-        if (target.matches('.tasks-table input[type="checkbox"]')) {
+        // Check if the changed element is a toggle switch in the main table (not in an editing row)
+        if (target.matches('.tasks-table input[type="checkbox"]') && !target.closest('tr.editing')) {
             const row = target.closest('tr');
             const taskId = row.dataset.taskId;
             const isEnabled = target.checked;
@@ -185,10 +292,77 @@ document.addEventListener('DOMContentLoaded', function() {
             if (taskId) {
                 await updateTask(taskId, { enabled: isEnabled });
                 // The visual state is already updated by the checkbox itself.
-                // We could add a small "saved" indicator here in the future.
             }
         }
     });
+
+    // --- Modal Logic ---
+    const modal = document.getElementById('add-task-modal');
+    if (modal) {
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        const cancelBtn = document.getElementById('cancel-add-task-btn');
+        const saveBtn = document.getElementById('save-new-task-btn');
+        const form = document.getElementById('add-task-form');
+
+        const closeModal = () => {
+            modal.classList.remove('visible');
+            setTimeout(() => {
+                modal.style.display = 'none';
+                form.reset(); // Reset form on close
+            }, 300);
+        };
+
+        closeModalBtn.addEventListener('click', closeModal);
+        cancelBtn.addEventListener('click', closeModal);
+        modal.addEventListener('click', (event) => {
+            // Close if clicked on the overlay background
+            if (event.target === modal) {
+                closeModal();
+            }
+        });
+
+        saveBtn.addEventListener('click', async () => {
+            if (form.checkValidity() === false) {
+                form.reportValidity();
+                return;
+            }
+
+            const formData = new FormData(form);
+            const data = {
+                task_name: formData.get('task_name'),
+                keyword: formData.get('keyword'),
+                description: formData.get('description'),
+                min_price: formData.get('min_price') || null,
+                max_price: formData.get('max_price') || null,
+                personal_only: formData.get('personal_only') === 'on',
+            };
+
+            // Show loading state
+            const btnText = saveBtn.querySelector('.btn-text');
+            const spinner = saveBtn.querySelector('.spinner');
+            btnText.style.display = 'none';
+            spinner.style.display = 'inline-block';
+            saveBtn.disabled = true;
+
+            const result = await createTaskWithAI(data);
+
+            // Hide loading state
+            btnText.style.display = 'inline-block';
+            spinner.style.display = 'none';
+            saveBtn.disabled = false;
+
+            if (result && result.task) {
+                closeModal();
+                // Refresh task list
+                const container = document.getElementById('tasks-table-container');
+                if (container) {
+                    const tasks = await fetchTasks();
+                    container.innerHTML = renderTasksTable(tasks);
+                }
+            }
+        });
+    }
+
 
     // Initial load
     navigateTo(window.location.hash || '#tasks');

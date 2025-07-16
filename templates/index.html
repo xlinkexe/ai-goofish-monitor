@@ -30,6 +30,56 @@
         </main>
     </div>
 
+    <!-- Add Task Modal -->
+    <div id="add-task-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>创建新监控任务 (AI驱动)</h2>
+                <button id="close-modal-btn" class="close-button">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="add-task-form">
+                    <div class="form-group">
+                        <label for="task-name">任务名称</label>
+                        <input type="text" id="task-name" name="task_name" placeholder="例如：索尼 A7M4 相机" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="keyword">搜索关键词</label>
+                        <input type="text" id="keyword" name="keyword" placeholder="例如：a7m4" required>
+                    </div>
+                    <div class="form-group form-group-inline">
+                        <div>
+                            <label for="min-price">价格范围 (可选)</label>
+                            <input type="number" id="min-price" name="min_price" placeholder="最低价">
+                        </div>
+                        <span>-</span>
+                        <div>
+                            <label for="max-price">&nbsp;</label>
+                            <input type="number" id="max-price" name="max_price" placeholder="最高价">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="task-description">详细购买需求</label>
+                        <textarea id="task-description" name="description" rows="6" placeholder="请用自然语言详细描述你的购买需求，AI将根据此描述生成分析标准。例如：我想买一台95新以上的索尼A7M4相机，预算在10000到13000元之间，快门数要低于5000。必须是国行且配件齐全。优先考虑个人卖家..." required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="personal-only" name="personal_only" checked>
+                            仅筛选个人闲置卖家
+                        </label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button id="cancel-add-task-btn" class="control-button">取消</button>
+                <button id="save-new-task-btn" class="control-button primary-btn">
+                    <span class="btn-text">创建任务</span>
+                    <span class="spinner" style="display: none;"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/js/main.js"></script>
 </body>
 </html>

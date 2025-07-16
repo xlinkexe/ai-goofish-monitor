@@ -33,8 +33,8 @@ MODEL_NAME = os.getenv("OPENAI_MODEL_NAME")
 NTFY_TOPIC_URL = os.getenv("NTFY_TOPIC_URL")
 
 # 检查配置是否齐全
-if not all([API_KEY, BASE_URL, MODEL_NAME]):
-    sys.exit("错误：请确保在 .env 文件中完整设置了 OPENAI_API_KEY, OPENAI_BASE_URL 和 OPENAI_MODEL_NAME。")
+if not all([BASE_URL, MODEL_NAME]):
+    sys.exit("错误：请确保在 .env 文件中完整设置了 OPENAI_BASE_URL 和 OPENAI_MODEL_NAME。(OPENAI_API_KEY 对于某些服务是可选的)")
 
 # 初始化 OpenAI 客户端
 try:
