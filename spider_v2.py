@@ -31,6 +31,7 @@ API_KEY = os.getenv("OPENAI_API_KEY")
 BASE_URL = os.getenv("OPENAI_BASE_URL")
 MODEL_NAME = os.getenv("OPENAI_MODEL_NAME")
 NTFY_TOPIC_URL = os.getenv("NTFY_TOPIC_URL")
+WX_BOT_URL = os.getenv("WX_BOT_URL")
 
 # 检查配置是否齐全
 if not all([BASE_URL, MODEL_NAME]):
@@ -475,7 +476,9 @@ async def send_ntfy_notification(product_data, reason):
     if not NTFY_TOPIC_URL:
         print("警告：未在 .env 文件中配置 NTFY_TOPIC_URL，跳过通知。")
         return
-
+    if not WX_BOT_URL:
+        print("警告：未在 .env 文件中配置 WX_BOT_URL，跳过通知。")
+        return
     title = product_data.get('商品标题', 'N/A')
     price = product_data.get('当前售价', 'N/A')
     link = product_data.get('商品链接', '#')
@@ -504,6 +507,36 @@ async def send_ntfy_notification(product_data, reason):
         print(f"   -> 发送 ntfy 通知失败: {e}")
         raise
 
+    # 企业微信文本消息的 payload 格式
+    payload = {
+        "msgtype": "text",
+        "text": {
+            "content": f"{notification_title}\n{message}"
+        }
+    }
+
+    try:
+        print(f"   -> 正在发送企业微信通知到: {WX_BOT_URL}")
+        # 设置正确的 Content-Type 为 application/json
+        headers = {
+            "Content-Type": "application/json"
+        }
+        # 使用 json 参数直接发送字典，requests 会自动处理编码和 Content-Type
+        response = requests.post(
+            WX_BOT_URL,
+            json=payload,
+            headers=headers,
+            timeout=10
+        )
+        response.raise_for_status()  # 检查HTTP状态码是否为错误 (如4xx或5xx)
+        result = response.json()
+        print(f"   -> 通知发送成功。响应: {result}")
+    except requests.exceptions.RequestException as e:
+        print(f"   -> 发送企业微信通知失败: {e}")
+        raise  # 重新抛出异常，以便上层可以捕获
+    except Exception as e:
+        print(f"   -> 发送企业微信通知时发生未知错误: {e}")
+        raise
 
 @retry_on_failure(retries=5, delay=10)
 async def get_ai_analysis(product_data, image_paths=None, prompt_text=""):
