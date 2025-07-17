@@ -32,6 +32,7 @@ BASE_URL = os.getenv("OPENAI_BASE_URL")
 MODEL_NAME = os.getenv("OPENAI_MODEL_NAME")
 NTFY_TOPIC_URL = os.getenv("NTFY_TOPIC_URL")
 WX_BOT_URL = os.getenv("WX_BOT_URL")
+PCURL_TO_MOBILE = os.getenv("PCURL_TO_MOBILE")
 
 # 检查配置是否齐全
 if not all([BASE_URL, MODEL_NAME]):
@@ -55,6 +56,24 @@ IMAGE_DOWNLOAD_HEADERS = {
     'Connection': 'keep-alive',
     'Upgrade-Insecure-Requests': '1',
 }
+
+def convert_goofish_link(url: str) -> str:
+    """
+    将Goofish商品链接转换为只包含商品ID的手机端格式。
+
+    Args:
+        url: 原始的Goofish商品链接。
+
+    Returns:
+        转换后的简洁链接，或在无法解析时返回原始链接。
+    """
+    # 匹配第一个链接中的商品ID模式：item?id= 后面的数字串
+    match_first_link = re.search(r'item\?id=(\d+)', url)
+    if match_first_link:
+        item_id = match_first_link.group(1)
+        return f"https://pages.goofish.com/sharexy?loadingVisible=false&bft=item&bfs=idlepc.item&spm=a21ybx.item.0.0&bfp={{\"id\":{item_id}}}"
+
+    return url
 
 def get_link_unique_key(link: str) -> str:
     """截取链接中第一个"&"之前的内容作为唯一标识依据。"""
@@ -482,8 +501,12 @@ async def send_ntfy_notification(product_data, reason):
     title = product_data.get('商品标题', 'N/A')
     price = product_data.get('当前售价', 'N/A')
     link = product_data.get('商品链接', '#')
+    if PCURL_TO_MOBILE:
+        mobile_link = convert_goofish_link(link)
+        message = f"价格: {price}\n原因: {reason}\n手机端链接: {mobile_link}\n电脑端链接: {link}"
+    else:
+        message = f"价格: {price}\n原因: {reason}\n链接: {link}"
 
-    message = f"价格: {price}\n原因: {reason}\n链接: {link}"
     notification_title = f"🚨 新推荐! {title[:30]}..."
 
     try:
